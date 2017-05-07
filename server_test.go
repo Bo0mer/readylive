@@ -20,7 +20,13 @@ func TestServer(t *testing.T) {
 
 	wsrv := readylive.WrapServer(srv,
 		readylive.WaitBeforeShutdown(1*time.Second))
-	wsrv.ListenAndServe()
+
+	go func() {
+		err := wsrv.ListenAndServe()
+		if err != http.ErrServerClosed {
+			t.Error(err)
+		}
+	}()
 
 	time.Sleep(time.Millisecond)
 

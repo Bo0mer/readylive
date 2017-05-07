@@ -6,6 +6,7 @@ package readylive
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -97,9 +98,6 @@ type Server struct {
 	shutdownWait time.Duration
 	// shutdownTimeout is the duration to wait for ongoing requests to finish.
 	shutdownTimeout time.Duration
-
-	// errChan gets errors returned by srv.ListenAndServe.
-	errChan chan error
 }
 
 // WrapServer attaches readiness and liveness handlers to srv.
@@ -117,19 +115,12 @@ func WrapServer(srv *http.Server, options ...ServerOption) *Server {
 		srv:             srv,
 		shutdownWait:    15 * time.Second,
 		shutdownTimeout: 5 * time.Second,
-		errChan:         make(chan error, 1),
 	}
 
 	for _, opt := range options {
 		opt(s)
 	}
 
-	return s
-}
-
-// ListenAndServe starts the server in its own goroutine.
-func (s *Server) ListenAndServe() {
-	// Attach ready and alive handlers.
 	if s.ready == nil {
 		s.ready = &readinessHandler{ready: true}
 	}
@@ -149,9 +140,22 @@ func (s *Server) ListenAndServe() {
 	mux.Handle("/", s.srv.Handler)
 	s.srv.Handler = mux
 
-	go func() {
-		s.errChan <- s.srv.ListenAndServe()
-	}()
+	return s
+}
+
+// ListenAndServe starts the server.
+func (s *Server) ListenAndServe() error {
+	return s.srv.ListenAndServe()
+}
+
+// ListenAndServeTLS starts the server with TLS enabled.
+func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
+	return s.ListenAndServeTLS(certFile, keyFile)
+}
+
+// Serve starts the server on l.
+func (s *Server) Serve(l net.Listener) error {
+	return s.Serve(l)
 }
 
 // Shutdown shutdowns the server gracefully.
@@ -164,9 +168,6 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 	wait := time.After(s.shutdownWait)
 	select {
-	case err := <-s.errChan:
-		// The server did not start.
-		return err
 	case <-wait:
 		break
 	case <-ctx.Done():
